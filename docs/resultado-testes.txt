@@ -1,0 +1,48 @@
+  ✔ admin entra com senha + TOTP
+  ✔ só a senha não dá acesso ao painel (falta o 2º fator)
+  ✔ código TOTP já usado é recusado (anti-replay)
+  ✔ NoSQL injection {"$ne": ""} bloqueada (400)
+  ✔ POST que não é JSON recusado (415) — barra CSRF via formulário
+  ✔ requisição sem token CSRF recusada (403)
+  ✔ corpo acima de 16 KB recusado (413)
+  ✔ eleitor não vota antes da abertura
+  ✔ admin abre a votação
+  ✔ eleitor 000000000001 vota (10)
+  ✔ sessão é encerrada após votar
+  ✔ eleitor que já votou não consegue entrar de novo
+  ✔ eleitor 000000000002 vota (10)
+  ✔ eleitor 000000000003 vota (25)
+  ✔ eleitor 000000000004 vota (BRANCO)
+  ✔ eleitor 000000000005 vota (99)
+  ✔ eleitor 000000000006 vota (40)
+  ✔ comprovante encontrado e válido em todos os nós
+  ✔ 5 envios simultâneos → exatamente 1 voto aceito (aceitos: 1)
+  ✔ eleitor não acessa o painel da Junta (403)
+  ✔ eleitor não acessa a auditoria (403)
+  ✔ auditor lê o ledger
+  ✔ auditor NÃO pode encerrar a eleição (403)
+  ✔ JWT forjado com alg=none recusado (401)
+  ✔ após 5 senhas erradas a conta é bloqueada (429)
+  ✔ conta bloqueada recusa até a senha certa
+  ✔ adulteração detectada no nó no_tre_sp (assinatura digital inválida)
+  ✔ maioria (2 de 3) continua em consenso
+  ✔ amostragem aponta o bloco 2 como divergente
+  ✔ nó restaurado a partir da maioria (6 blocos)
+  ✔ admin encerra a votação
+  ✔ ninguém vota depois do encerramento
+  ✔ frase da Junta errada não abre a chave (403)
+  ✔ apuração concluída
+  ✔ contagem correta: 10=2 25=1 40=1 77=1 brancos=1 nulos=1
+  ✔ verificação independente: 8 blocos íntegros
+  ✔ boletim público: hash e assinatura conferem
+  ✔ hash final do boletim == hash final recalculado da cadeia
+  ✔ trilha íntegra (44 eventos encadeados)
+  ✔ evento CSRF_BLOQUEADO registrado
+  ✔ evento VOTO_DUPLICADO_BLOQUEADO registrado
+  ✔ evento CONTA_BLOQUEADA registrado
+  ✔ evento ACESSO_NEGADO registrado
+  ✔ evento NO_REPARADO registrado
+  ✔ evento APURACAO_RECUSADA registrado
+  ✔ evento APURACAO_CONCLUIDA registrado
+  ✔ nenhum evento de voto identifica o eleitor
+Todas as verificações passaram.

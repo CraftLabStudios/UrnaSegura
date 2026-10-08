@@ -1,0 +1,11 @@
+# MongoDB local para a demonstração (opcional — também funciona com Atlas ou MongoDB instalado).
+#   docker compose up -d
+services:
+  mongo:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - dados:/data/db
+volumes:
+  dados:

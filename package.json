@@ -1,0 +1,23 @@
+{
+  "name": "urna-segura",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sistema de vota\u00e7\u00e3o eletr\u00f4nica com foco em seguran\u00e7a e auditoria (trabalho acad\u00eamico)",
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c magenta,cyan \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "npm run start -w server",
+    "seed": "npm run seed -w server",
+    "token": "npm run token -w server --",
+    "demo:adulterar": "npm run demo:adulterar -w server --",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "testar": "npm run testar -w server"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  }
+}

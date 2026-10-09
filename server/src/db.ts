@@ -15,6 +15,16 @@ export interface Usuario {
   bloqueadoAte: Date | null;
   /** Único vínculo do eleitor com a eleição: um booleano, sem horário e sem referência ao voto. */
   jaVotou: boolean;
+  /** Dados exibidos na tela "Olá" depois do gov.br simulado. */
+  zona?: number;
+  secao?: number;
+  localVotacao?: string;
+  municipio?: string;
+  uf?: string;
+  /** Eleitor de demonstração que o botão "Entrar com gov.br" (simulado) pode entregar. */
+  demo?: boolean;
+  /** Reserva temporária: dois cliques simultâneos no gov.br simulado não recebem o mesmo eleitor. */
+  reservadoAte?: Date | null;
 }
 
 export type EstadoEleicao = "preparada" | "aberta" | "encerrada" | "apurada";
@@ -22,15 +32,31 @@ export type EstadoEleicao = "preparada" | "aberta" | "encerrada" | "apurada";
 export interface Candidato {
   numero: string;
   nome: string;
-  partido: string;
+  partido: string; // sigla
   vice?: string;
+  suplentes?: string[];
+  foto?: string; // caminho opcional (ex.: /fotos/presidente-13.jpg); sem foto, a urna desenha um avatar
+}
+
+export interface Partido {
+  numero: string; // 2 dígitos
+  sigla: string;
+}
+
+export interface Cargo {
+  id: string; // ex.: "deputado_federal"
+  nome: string; // ex.: "Deputado Federal"
+  digitos: number; // quantos dígitos o número tem na urna
+  legenda: boolean; // aceita voto só no partido (2 primeiros dígitos)?
+  candidatos: Candidato[];
 }
 
 export interface Eleicao {
   _id: string;
   titulo: string;
-  cargo: string;
-  candidatos: Candidato[];
+  /** Cédula na ordem da urna real: deputado federal → estadual → senador (2 vagas) → governador → presidente. */
+  cargos: Cargo[];
+  partidos: Partido[];
   estado: EstadoEleicao;
   chave: ChaveEleicao;
   criadaEm: Date;
@@ -62,14 +88,22 @@ export interface EventoAuditoria {
   assinatura: string;
 }
 
+export interface ResultadoCargo {
+  id: string;
+  nome: string;
+  candidatos: { numero: string; nome: string; partido: string; votos: number }[];
+  legendas: { numero: string; sigla: string; votos: number }[];
+  brancos: number;
+  nulos: number;
+  validos: number; // candidatos + legendas
+}
+
 export interface Boletim {
   _id: string; // eleicaoId
   eleicaoId: string;
-  cargo: string;
-  resultado: { numero: string; nome: string; partido: string; votos: number }[];
-  brancos: number;
-  nulos: number;
-  totalVotos: number;
+  titulo: string;
+  cargos: ResultadoCargo[];
+  totalVotos: number; // cédulas apuradas
   eleitoresAptos: number;
   comparecimento: number;
   hashFinalLedger: string;
@@ -110,7 +144,9 @@ export async function conectar(): Promise<void> {
   }
 
   await usuarios().createIndex({ papel: 1 });
+  await usuarios().createIndex({ demo: 1, jaVotou: 1 }, { partialFilterExpression: { demo: true } });
   await auditoria().createIndex({ seq: 1 }, { unique: true });
+  await auditoria().createIndex({ tipo: 1, quando: 1 }); // dashboard: contagens por tipo e janela de tempo
   // TTL: o MongoDB apaga sozinho revogações de tokens que já expirariam de qualquer forma.
   await sessoesRevogadas().createIndex({ expiraEm: 1 }, { expireAfterSeconds: 0 }).catch((e) => {
     console.warn(`Aviso: índice TTL não suportado por este servidor (${e.message}). Continuando.`);

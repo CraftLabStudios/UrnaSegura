@@ -1,4 +1,4 @@
-import { boletins, eleicoes, usuarios, type Boletim, type Eleicao, type EstadoEleicao } from "../db.js";
+import { boletins, eleicoes, usuarios, type Boletim, type Cargo, type Eleicao, type EstadoEleicao, type Partido, type ResultadoCargo } from "../db.js";
 import { abrirChavePrivadaEleicao, assinarHash, decifrarVoto, type VotoCifrado } from "../crypto/chaves.js";
 import { jsonCanonico, sha256Hex } from "../crypto/hash.js";
 import { ErroLedger, listarBlocos, noDeReferencia, parametrosEleicao } from "./ledger.js";
@@ -73,28 +73,27 @@ export async function apurar(fraseJunta: string): Promise<Boletim> {
     throw new ErroRegra("Frase-senha da Junta Eleitoral incorreta.", 403);
   }
 
-  const contagem = new Map(e.candidatos.map((c) => [c.numero, 0]));
-  let brancos = 0;
-  let nulos = 0;
+  const contagens = e.cargos.map(novaContagem);
   for (const b of votos) {
+    let cedula: Record<string, unknown> = {};
     try {
-      const v = decifrarVoto(privada, b.conteudo as VotoCifrado) as { escolha?: unknown };
-      if (v.escolha === "BRANCO") brancos++;
-      else if (typeof v.escolha === "string" && contagem.has(v.escolha)) contagem.set(v.escolha, contagem.get(v.escolha)! + 1);
-      else nulos++;
+      const v = decifrarVoto(privada, b.conteudo as VotoCifrado) as { votos?: unknown };
+      if (v.votos && typeof v.votos === "object" && !Array.isArray(v.votos)) cedula = v.votos as Record<string, unknown>;
     } catch {
-      nulos++; // voto ilegível conta como nulo (e não derruba a apuração)
+      // cédula ilegível: todos os cargos contam como nulo (e não derruba a apuração)
     }
+    e.cargos.forEach((cargo, i) => {
+      const escolha = cedula[cargo.id];
+      // 2ª vaga de senador no MESMO candidato da 1ª: nulo (cada vaga precisa de um nome diferente).
+      const repetido = cargo.id === "senador_2" && typeof escolha === "string" && /^[0-9]+$/.test(escolha) && escolha === cedula.senador_1;
+      contar(contagens[i], repetido ? "NULO" : escolha, cargo, e.partidos);
+    });
   }
 
   const base = {
     eleicaoId: e._id,
-    cargo: e.cargo,
-    resultado: e.candidatos
-      .map((c) => ({ numero: c.numero, nome: c.nome, partido: c.partido, votos: contagem.get(c.numero)! }))
-      .sort((a, b) => b.votos - a.votos),
-    brancos,
-    nulos,
+    titulo: e.titulo,
+    cargos: e.cargos.map((cargo, i) => resultadoCargo(cargo, contagens[i], e.partidos)),
     totalVotos: votos.length,
     eleitoresAptos: await usuarios().countDocuments({ papel: "eleitor" }),
     comparecimento,
@@ -108,4 +107,47 @@ export async function apurar(fraseJunta: string): Promise<Boletim> {
   await boletins().insertOne(boletim);
   await avancarEstado("encerrada", "apurada");
   return boletim;
+}
+
+/* ------------------------------ contagem por cargo ------------------------------ */
+
+interface Contagem { candidatos: Map<string, number>; legendas: Map<string, number>; brancos: number; nulos: number }
+
+const novaContagem = (cargo: Cargo): Contagem => ({ candidatos: new Map(cargo.candidatos.map((c) => [c.numero, 0])), legendas: new Map(), brancos: 0, nulos: 0 });
+
+/**
+ * Regras da urna para UM cargo:
+ *  - "BRANCO" → branco
+ *  - número de candidato existente → voto no candidato
+ *  - cargo proporcional (deputados): número que começa com um partido existente → voto de LEGENDA (vai para o partido)
+ *  - qualquer outra coisa ("NULO", número inexistente, cargo ausente) → nulo
+ */
+export function classificar(escolha: unknown, cargo: Cargo, partidos: Partido[]):
+  { tipo: "candidato" | "legenda"; numero: string } | { tipo: "branco" | "nulo" } {
+  if (escolha === "BRANCO") return { tipo: "branco" };
+  if (typeof escolha !== "string" || !/^[0-9]+$/.test(escolha)) return { tipo: "nulo" };
+  if (escolha.length === cargo.digitos && cargo.candidatos.some((c) => c.numero === escolha)) return { tipo: "candidato", numero: escolha };
+  if (cargo.legenda && (escolha.length === 2 || escolha.length === cargo.digitos) && partidos.some((p) => p.numero === escolha.slice(0, 2))) {
+    return { tipo: "legenda", numero: escolha.slice(0, 2) };
+  }
+  return { tipo: "nulo" };
+}
+
+function contar(c: Contagem, escolha: unknown, cargo: Cargo, partidos: Partido[]) {
+  const r = classificar(escolha, cargo, partidos);
+  if (r.tipo === "candidato") c.candidatos.set(r.numero, c.candidatos.get(r.numero)! + 1);
+  else if (r.tipo === "legenda") c.legendas.set(r.numero, (c.legendas.get(r.numero) ?? 0) + 1);
+  else if (r.tipo === "branco") c.brancos++;
+  else c.nulos++;
+}
+
+function resultadoCargo(cargo: Cargo, c: Contagem, partidos: Partido[]): ResultadoCargo {
+  const candidatos = cargo.candidatos
+    .map((x) => ({ numero: x.numero, nome: x.nome, partido: x.partido, votos: c.candidatos.get(x.numero)! }))
+    .sort((a, b) => b.votos - a.votos || a.numero.localeCompare(b.numero));
+  const legendas = [...c.legendas]
+    .map(([numero, votos]) => ({ numero, sigla: partidos.find((p) => p.numero === numero)?.sigla ?? numero, votos }))
+    .sort((a, b) => b.votos - a.votos || a.numero.localeCompare(b.numero));
+  const validos = candidatos.reduce((s, x) => s + x.votos, 0) + legendas.reduce((s, x) => s + x.votos, 0);
+  return { id: cargo.id, nome: cargo.nome, candidatos, legendas, brancos: c.brancos, nulos: c.nulos, validos };
 }

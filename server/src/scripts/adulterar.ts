@@ -42,11 +42,11 @@ if (modo === "apagar") {
   await no.blocos.deleteOne({ _id: bloco._id });
   console.log(`☠  Bloco #${seq} APAGADO do nó ${nomeNo}.`);
 } else {
-  // Invasor cifra um voto para o candidato 77 com a chave pública da eleição.
+  // Invasor cifra uma cédula falsa (presidente 55) com a chave pública da eleição.
   const chaveAes = randomBytes(32);
   const iv = randomBytes(12);
   const c = createCipheriv("aes-256-gcm", chaveAes, iv);
-  const ct = Buffer.concat([c.update(JSON.stringify({ escolha: "77", nonce: randomBytes(16).toString("base64") })), c.final(), c.getAuthTag()]);
+  const ct = Buffer.concat([c.update(JSON.stringify({ votos: { presidente: "55" }, nonce: randomBytes(16).toString("base64") })), c.final(), c.getAuthTag()]);
   const chaveEnvelopada = publicEncrypt(
     { key: createPublicKey({ key: Buffer.from(e.chave.publicaSpkiB64, "base64"), format: "der", type: "spki" }), padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: "sha256" },
     chaveAes,

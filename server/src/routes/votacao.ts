@@ -14,9 +14,9 @@ rotasVotacao.get("/eleicao", async (_req, res) => {
   res.json({
     id: e._id,
     titulo: e.titulo,
-    cargo: e.cargo,
     estado: e.estado,
-    candidatos: e.candidatos,
+    cargos: e.cargos,
+    partidos: e.partidos,
     chavePublica: e.chave.publicaSpkiB64,
     impressaoDigitalChave: e.chave.impressaoDigital,
   });

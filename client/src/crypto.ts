@@ -1,7 +1,7 @@
 /**
  * Criptografia no NAVEGADOR (Web Crypto API nativa — nenhuma biblioteca de terceiros).
  *
- * 1. cifrarVoto: o voto é cifrado aqui, antes de sair do computador do eleitor.
+ * 1. cifrarVoto: a cédula inteira (todos os cargos) é cifrada aqui, antes de sair do computador do eleitor.
  *    Esquema híbrido: AES-256-GCM para o conteúdo + RSA-OAEP-SHA256 (chave da eleição) para a chave AES.
  *    O servidor nunca vê o voto em claro; só a Junta, com a chave privada, na apuração.
  * 2. verificarCadeia: qualquer pessoa recalcula os hashes e confere as assinaturas Ed25519
@@ -42,14 +42,15 @@ export interface VotoCifrado {
   cifrado: string;
 }
 
-export async function cifrarVoto(escolha: string, chavePublicaSpkiB64: string): Promise<VotoCifrado> {
+/** `votos`: { cargoId: número digitado | "BRANCO" | "NULO" }. Uma cédula = um bloco = um envio. */
+export async function cifrarVoto(votos: Record<string, string>, chavePublicaSpkiB64: string): Promise<VotoCifrado> {
   const chaveRsa = await crypto.subtle.importKey("spki", deB64(chavePublicaSpkiB64), { name: "RSA-OAEP", hash: "SHA-256" }, false, ["encrypt"]);
   // Chave AES nova a cada voto, extraível só para ser envelopada e depois descartada.
   const chaveAes = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt"]);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   // nonce aleatório: dois votos iguais nunca geram o mesmo texto cifrado.
   const nonce = b64(crypto.getRandomValues(new Uint8Array(16)));
-  const cifrado = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, chaveAes, enc.encode(JSON.stringify({ escolha, nonce })));
+  const cifrado = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, chaveAes, enc.encode(JSON.stringify({ votos, nonce })));
   const bruta = await crypto.subtle.exportKey("raw", chaveAes);
   const chaveEnvelopada = await crypto.subtle.encrypt({ name: "RSA-OAEP" }, chaveRsa, bruta);
   new Uint8Array(bruta).fill(0);

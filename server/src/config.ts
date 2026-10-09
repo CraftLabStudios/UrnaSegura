@@ -17,6 +17,18 @@ const nos = (process.env.LEDGER_NODES ?? "no_tse,no_tre_sc,no_tre_sp")
   .map((s) => s.trim())
   .filter(Boolean);
 
+/** Segredos fracos são o erro mais comum: valida o formato sempre que o valor vem do ambiente. */
+function validarSegredos() {
+  const jwt = process.env.JWT_SECRET;
+  const dados = process.env.DATA_KEY;
+  if (jwt && jwt.length < 32) throw new Error("JWT_SECRET precisa ter pelo menos 32 caracteres.");
+  if (dados && !/^[0-9a-fA-F]{64}$/.test(dados)) throw new Error("DATA_KEY precisa ter 64 caracteres hexadecimais (32 bytes).");
+  if (process.env.NODE_ENV !== "production" && (!jwt || !dados)) {
+    console.warn("AVISO: usando segredos de DESENVOLVIMENTO (JWT_SECRET/DATA_KEY ausentes). Nunca exponha este servidor na internet assim.");
+  }
+}
+validarSegredos();
+
 export const config = {
   producao: process.env.NODE_ENV === "production",
   porta: Number(process.env.PORT ?? 3001),
@@ -36,7 +48,13 @@ export const config = {
   chaveDados: obrigatoria("DATA_KEY", "0".repeat(64)),
 
   sessaoMinutos: Number(process.env.SESSION_MINUTES ?? 10),
-  mfaMinutos: 3,
+  /** Tempo máximo entre a senha e o código TOTP no login da equipe. */
+  fluxoMinutos: 5,
+  /**
+   * Botão "Entrar com gov.br" SIMULADO: entrega um eleitor de demonstração sem senha. Ligado por padrão só fora de
+   * produção; em produção exige GOVBR_SIMULADO=sim explícito (ex.: apresentação pública da simulação).
+   */
+  govbrSimulado: process.env.GOVBR_SIMULADO ? process.env.GOVBR_SIMULADO === "sim" : process.env.NODE_ENV !== "production",
   maxTentativasLogin: 5,
   /** Limites por IP (janela de 15 min para login, 1 min para voto). */
   limiteLoginPorIp: Number(process.env.RATE_LIMIT_LOGIN ?? 10),

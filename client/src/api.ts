@@ -41,18 +41,41 @@ export interface Usuario {
   nome: string;
   papel: Papel;
 }
+/** O que o gov.br simulado devolve para a tela "Olá". */
+export interface DadosEleitor {
+  nome: string;
+  titulo: string;
+  zona: number | null;
+  secao: number | null;
+  localVotacao: string | null;
+  municipio: string | null;
+  uf: string | null;
+}
 export interface Candidato {
   numero: string;
   nome: string;
   partido: string;
   vice?: string;
+  suplentes?: string[];
+  foto?: string;
+}
+export interface Partido {
+  numero: string;
+  sigla: string;
+}
+export interface Cargo {
+  id: string;
+  nome: string;
+  digitos: number;
+  legenda: boolean;
+  candidatos: Candidato[];
 }
 export interface Eleicao {
   id: string;
   titulo: string;
-  cargo: string;
   estado: "preparada" | "aberta" | "encerrada" | "apurada";
-  candidatos: Candidato[];
+  cargos: Cargo[];
+  partidos: Partido[];
   chavePublica: string;
   impressaoDigitalChave: string;
 }
@@ -80,12 +103,19 @@ export interface EstadoReplicas {
   blocosConsenso: number;
   nos: NoEstado[];
 }
-export interface Boletim {
-  eleicaoId: string;
-  cargo: string;
-  resultado: { numero: string; nome: string; partido: string; votos: number }[];
+export interface ResultadoCargo {
+  id: string;
+  nome: string;
+  candidatos: { numero: string; nome: string; partido: string; votos: number }[];
+  legendas: { numero: string; sigla: string; votos: number }[];
   brancos: number;
   nulos: number;
+  validos: number;
+}
+export interface Boletim {
+  eleicaoId: string;
+  titulo: string;
+  cargos: ResultadoCargo[];
   totalVotos: number;
   eleitoresAptos: number;
   comparecimento: number;

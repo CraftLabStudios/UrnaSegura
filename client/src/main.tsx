@@ -8,7 +8,8 @@ import { Entrar } from "./pages/Entrar";
 import { Cabine } from "./pages/Cabine";
 import { Admin } from "./pages/Admin";
 import { Auditoria } from "./pages/Auditoria";
-import { Transparencia } from "./pages/Transparencia";
+import { Dashboard } from "./pages/Dashboard";
+import { Resultados } from "./pages/Resultados";
 import { ConsultarComprovante } from "./pages/ConsultarComprovante";
 import type { Papel } from "./api";
 
@@ -38,7 +39,8 @@ createRoot(document.getElementById("root")!).render(
             <Route path="/cabine" element={<Protegida papeis={["eleitor"]}><Cabine /></Protegida>} />
             <Route path="/admin" element={<Protegida papeis={["admin"]}><Admin /></Protegida>} />
             <Route path="/auditoria" element={<Protegida papeis={["auditor", "admin"]}><Auditoria /></Protegida>} />
-            <Route path="/transparencia" element={<Transparencia />} />
+            <Route path="/painel" element={<Protegida papeis={["auditor", "admin"]}><Dashboard /></Protegida>} />
+            <Route path="/resultados" element={<Resultados />} />
             <Route path="/comprovante" element={<ConsultarComprovante />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

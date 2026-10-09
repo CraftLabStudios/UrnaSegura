@@ -48,7 +48,7 @@ export function Admin() {
     try {
       const r = await api.post<{ boletim: Boletim }>("/admin/apurar", { frase });
       setFrase("");
-      setMsg({ tipo: "ok", texto: `Apuração concluída: ${r.boletim.totalVotos} votos. Boletim publicado em Transparência.` });
+      setMsg({ tipo: "ok", texto: `Apuração concluída: ${r.boletim.totalVotos} votos. Resultado publicado em Resultados ao vivo.` });
       await carregar();
     } catch (err) {
       setMsg({ tipo: "erro", texto: (err as ErroApi).message });
@@ -99,7 +99,7 @@ export function Admin() {
             <button className="botao primario" disabled={ocupado}>{ocupado ? "Apurando…" : "Apurar votos"}</button>
           </form>
         )}
-        {eleicao.estado === "apurada" && <Link className="botao primario" to="/transparencia">Ver boletim publicado</Link>}
+        {eleicao.estado === "apurada" && <Link className="botao primario" to="/resultados">Ver resultado publicado</Link>}
       </div>
 
       <h2>Réplicas do ledger</h2>

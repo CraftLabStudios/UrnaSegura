@@ -3,7 +3,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { rateLimit } from "express-rate-limit";
 import { config } from "../config.js";
-import { sessoesRevogadas, type Papel } from "../db.js";
+import { sessoesRevogadas, usuarios, type Papel } from "../db.js";
 import { registrarEvento } from "../services/auditoria.js";
 
 /* ============================== Sessão (JWT) ============================== */
@@ -22,7 +22,7 @@ declare module "express-serve-static-core" {
 }
 
 const COOKIE_SESSAO = "sessao";
-const COOKIE_MFA = "mfa_pendente";
+const COOKIE_FLUXO = "fluxo_login";
 const COOKIE_CSRF = "csrf";
 
 const opcoesCookie = (minutos: number, httpOnly = true) => ({
@@ -48,7 +48,7 @@ export function emitirSessao(res: Response, sub: string, papel: Papel): { csrf: 
   const csrf = tokenCsrf(jti);
   res.cookie(COOKIE_SESSAO, token, opcoesCookie(config.sessaoMinutos));
   res.cookie(COOKIE_CSRF, csrf, { ...opcoesCookie(config.sessaoMinutos, false), path: "/" });
-  res.clearCookie(COOKIE_MFA, { path: "/api" });
+  res.clearCookie(COOKIE_FLUXO, { path: "/api" });
   return { csrf, expiraEm: new Date(Date.now() + config.sessaoMinutos * 60_000).toISOString() };
 }
 
@@ -65,15 +65,21 @@ export async function encerrarSessao(req: Request, res: Response): Promise<void>
   res.clearCookie(COOKIE_CSRF, { path: "/" });
 }
 
-export function emitirMfaPendente(res: Response, sub: string): void {
-  const token = jwt.sign({ tipo: "mfa" }, config.jwtSegredo, { algorithm: "HS256", subject: sub, expiresIn: `${config.mfaMinutos}m` });
-  res.cookie(COOKIE_MFA, token, opcoesCookie(config.mfaMinutos));
+/**
+ * Etapa pendente do login da equipe (senha já conferida, falta o TOTP). É um JWT curto e assinado:
+ * o navegador não consegue "pular" a etapa trocando um valor.
+ */
+export type EtapaLogin = "mfa";
+
+export function emitirFluxo(res: Response, sub: string, etapa: EtapaLogin): void {
+  const token = jwt.sign({ tipo: "fluxo", etapa }, config.jwtSegredo, { algorithm: "HS256", subject: sub, expiresIn: `${config.fluxoMinutos}m` });
+  res.cookie(COOKIE_FLUXO, token, opcoesCookie(config.fluxoMinutos));
 }
 
-export function lerMfaPendente(req: Request): string | null {
+export function lerFluxo(req: Request): { sub: string; etapa: EtapaLogin } | null {
   try {
-    const p = jwt.verify(req.cookies?.[COOKIE_MFA] ?? "", config.jwtSegredo, { algorithms: ["HS256"] }) as jwt.JwtPayload;
-    return p.tipo === "mfa" && typeof p.sub === "string" ? p.sub : null;
+    const p = jwt.verify(req.cookies?.[COOKIE_FLUXO] ?? "", config.jwtSegredo, { algorithms: ["HS256"] }) as jwt.JwtPayload;
+    return p.tipo === "fluxo" && typeof p.sub === "string" && p.etapa === "mfa" ? { sub: p.sub, etapa: p.etapa } : null;
   } catch {
     return null;
   }
@@ -93,7 +99,11 @@ export function exigir(...papeis: Papel[]) {
     if (await sessoesRevogadas().findOne({ _id: p.jti })) {
       return res.status(401).json({ erro: "Sessão encerrada." });
     }
-    req.sessao = { sub: p.sub, papel: p.papel, jti: p.jti, exp: p.exp! };
+    // O papel do token vale poucos minutos, mas a fonte da verdade é o banco: conta removida ou rebaixada
+    // perde o acesso na hora, sem esperar o token expirar.
+    const dono = await usuarios().findOne({ _id: p.sub }, { projection: { papel: 1 } });
+    if (!dono || dono.papel !== p.papel) return res.status(401).json({ erro: "Sessão inválida." });
+    req.sessao = { sub: p.sub, papel: dono.papel, jti: p.jti, exp: p.exp! };
 
     // CSRF (double submit atrelado à sessão) em toda requisição que altera estado.
     if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
@@ -123,6 +133,23 @@ export const ipDe = (req: Request) => req.ip ?? "desconhecido";
 
 /* ============================ Rate limiting ============================ */
 
+/**
+ * Registra no máximo UM evento RATE_LIMIT por IP a cada janela. Sem isso, um atacante que já estourou o limite
+ * faria cada requisição bloqueada gravar um evento assinado na trilha (inflando o banco e entupindo a fila).
+ */
+const ultimoRegistroRateLimit = new Map<string, number>();
+function deveRegistrarRateLimit(ip: string, janelaMs: number): boolean {
+  const agora = Date.now();
+  if (ultimoRegistroRateLimit.size > 5000) {
+    for (const [k, t] of ultimoRegistroRateLimit) if (agora - t > janelaMs) ultimoRegistroRateLimit.delete(k);
+    if (ultimoRegistroRateLimit.size > 5000) return false; // enxurrada de IPs distintos: não deixa a memória crescer
+  }
+  const t = ultimoRegistroRateLimit.get(ip);
+  if (t !== undefined && agora - t < janelaMs) return false;
+  ultimoRegistroRateLimit.set(ip, agora);
+  return true;
+}
+
 const limitador = (janelaMin: number, max: number, msg: string) =>
   rateLimit({
     windowMs: janelaMin * 60_000,
@@ -131,7 +158,9 @@ const limitador = (janelaMin: number, max: number, msg: string) =>
     legacyHeaders: false,
     message: { erro: msg },
     handler: async (req, res, _next, opts) => {
-      await registrarEvento("RATE_LIMIT", "anonimo", ipDe(req), { rota: req.originalUrl });
+      if (deveRegistrarRateLimit(ipDe(req), janelaMin * 60_000)) {
+        await registrarEvento("RATE_LIMIT", "anonimo", ipDe(req), { rota: req.originalUrl });
+      }
       res.status(opts.statusCode).json(opts.message);
     },
   });
@@ -139,6 +168,10 @@ const limitador = (janelaMin: number, max: number, msg: string) =>
 export const limiteGeral = limitador(15, 600, "Muitas requisições. Aguarde alguns minutos.");
 export const limiteLogin = limitador(15, config.limiteLoginPorIp, "Muitas tentativas de login deste endereço. Aguarde 15 minutos.");
 export const limiteVoto = limitador(1, config.limiteVotoPorIp, "Muitas tentativas de voto. Aguarde.");
+/** Botão gov.br simulado: um clique por eleitor; teto maior que o do login com senha para a demonstração fluir. */
+export const limiteFluxo = limitador(15, config.limiteLoginPorIp * 6, "Muitas tentativas. Aguarde alguns minutos.");
+/** Cada tentativa de apuração roda um scrypt caro (abre a chave privada): limita chute de frase-senha e abuso de CPU. */
+export const limiteApuracao = limitador(15, 5, "Muitas tentativas de apuração. Aguarde 15 minutos.");
 
 /* ====================== Higiene das requisições ====================== */
 

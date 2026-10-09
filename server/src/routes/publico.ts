@@ -3,13 +3,19 @@ import { z } from "zod";
 import { boletins } from "../db.js";
 import { chavePublicaAssinaturaSpki } from "../crypto/chaves.js";
 import { eleicaoAtual } from "../services/eleicao.js";
+import { painelPublico } from "../services/dashboard.js";
 import { listarBlocos, localizarBloco, noDeReferencia } from "../services/ledger.js";
 
 /**
- * Transparência: qualquer pessoa, sem login, pode baixar a cadeia, as chaves públicas e o boletim
+ * Rotas públicas (sem login): resultados ao vivo, chaves públicas, boletim, comprovante e a cadeia cifrada
  * e verificar tudo por conta própria (a página /verificar faz isso no navegador).
  */
 export const rotasPublicas = Router();
+
+/** Tela "Resultados ao vivo": consultada a cada poucos segundos por qualquer pessoa (resposta em cache de 5 s). */
+rotasPublicas.get("/ao-vivo", async (_req, res) => {
+  res.json(await painelPublico());
+});
 
 rotasPublicas.get("/chaves", async (_req, res) => {
   const e = await eleicaoAtual();

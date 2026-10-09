@@ -41,12 +41,12 @@ function carimboMinuto(): string {
   return d.toISOString();
 }
 
-export function parametrosEleicao(e: Pick<Eleicao, "_id" | "cargo" | "candidatos" | "chave">): string {
+export function parametrosEleicao(e: Pick<Eleicao, "_id" | "cargos" | "partidos" | "chave">): string {
   return sha256Hex(
     jsonCanonico({
       eleicaoId: e._id,
-      cargo: e.cargo,
-      candidatos: e.candidatos,
+      cargos: e.cargos,
+      partidos: e.partidos,
       chavePublica: e.chave.impressaoDigital,
     }),
   );
@@ -81,14 +81,14 @@ async function topoConsenso(eleicaoId: string) {
 
 export class ErroLedger extends Error {}
 
-async function anexar(eleicaoId: string, tipo: BlocoLedger["tipo"], conteudo: BlocoLedger["conteudo"]) {
+async function anexar(eleicaoId: string, tipo: BlocoLedger["tipo"], conteudo: BlocoLedger["conteudo"], carimbo?: string) {
   return fila.executar(async () => {
     const { bloco: topo, nos: nosEmDia } = await topoConsenso(eleicaoId);
     const base: BaseBloco = {
       seq: topo ? topo.seq + 1 : 0,
       eleicaoId,
       hashAnterior: topo ? topo.hash : HASH_GENESIS,
-      carimboTempo: carimboMinuto(),
+      carimboTempo: carimbo ?? carimboMinuto(),
       tipo,
       hashConteudo: calcularHashConteudo(conteudo),
     };
@@ -114,8 +114,9 @@ export function iniciarLedger(eleicao: Eleicao) {
   return anexar(eleicao._id, "genesis", { parametrosEleicao: parametrosEleicao(eleicao) });
 }
 
-export function registrarVoto(eleicaoId: string, voto: VotoCifrado) {
-  return anexar(eleicaoId, "voto", voto);
+/** `carimbo` existe só para o seed (horários espalhados nos votos de demonstração); a rota HTTP nunca o passa. */
+export function registrarVoto(eleicaoId: string, voto: VotoCifrado, carimbo?: string) {
+  return anexar(eleicaoId, "voto", voto, carimbo);
 }
 
 /* ---------------------------- verificação ---------------------------- */

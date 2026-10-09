@@ -34,8 +34,9 @@ export function Moldura() {
         <nav className="menu">
           {usuario?.papel === "eleitor" && <NavLink to="/cabine">Cabine</NavLink>}
           {usuario?.papel === "admin" && <NavLink to="/admin">Junta eleitoral</NavLink>}
+          {(usuario?.papel === "auditor" || usuario?.papel === "admin") && <NavLink to="/painel">Painel</NavLink>}
           {(usuario?.papel === "auditor" || usuario?.papel === "admin") && <NavLink to="/auditoria">Auditoria</NavLink>}
-          <NavLink to="/transparencia">Transparência</NavLink>
+          <NavLink to="/resultados" className="link-vivo">Resultados ao vivo</NavLink>
           <NavLink to="/comprovante">Consultar comprovante</NavLink>
         </nav>
         <div className="quem">

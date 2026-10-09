@@ -4,7 +4,8 @@ import { auditoria, usuarios } from "../db.js";
 import { registrarEvento, verificarTrilha } from "../services/auditoria.js";
 import { apurar, avancarEstado, eleicaoAtual } from "../services/eleicao.js";
 import { amostragem, estadoReplicas, repararNo } from "../services/ledger.js";
-import { ator, exigir, ipDe } from "../middleware/seguranca.js";
+import { limparCacheDashboard, montarDashboard } from "../services/dashboard.js";
+import { ator, exigir, ipDe, limiteApuracao } from "../middleware/seguranca.js";
 
 /* ============================ Administração ============================ */
 /* Junta/Mesário: abre e encerra a votação, apura e repara réplicas.       */
@@ -15,7 +16,7 @@ rotasAdmin.use(exigir("admin"));
 rotasAdmin.get("/painel", async (_req, res) => {
   const e = await eleicaoAtual();
   res.json({
-    eleicao: { id: e._id, titulo: e.titulo, cargo: e.cargo, estado: e.estado, abertaEm: e.abertaEm, encerradaEm: e.encerradaEm },
+    eleicao: { id: e._id, titulo: e.titulo, cargo: e.cargos.map((c) => c.nome).join(" · "), estado: e.estado, abertaEm: e.abertaEm, encerradaEm: e.encerradaEm },
     eleitoresAptos: await usuarios().countDocuments({ papel: "eleitor" }),
     comparecimento: await usuarios().countDocuments({ papel: "eleitor", jaVotou: true }),
     replicas: await estadoReplicas(e._id),
@@ -25,20 +26,23 @@ rotasAdmin.get("/painel", async (_req, res) => {
 rotasAdmin.post("/eleicao/abrir", async (req, res) => {
   const e = await avancarEstado("preparada", "aberta");
   await registrarEvento("ELEICAO_ABERTA", ator(req), ipDe(req), { eleicaoId: e._id });
+  limparCacheDashboard();
   res.json({ estado: e.estado });
 });
 
 rotasAdmin.post("/eleicao/encerrar", async (req, res) => {
   const e = await avancarEstado("aberta", "encerrada");
   await registrarEvento("ELEICAO_ENCERRADA", ator(req), ipDe(req), { eleicaoId: e._id });
+  limparCacheDashboard();
   res.json({ estado: e.estado });
 });
 
-rotasAdmin.post("/apurar", async (req, res) => {
+rotasAdmin.post("/apurar", limiteApuracao, async (req, res) => {
   const { frase } = z.object({ frase: z.string().min(8).max(200) }).strict().parse(req.body);
   try {
     const boletim = await apurar(frase);
     await registrarEvento("APURACAO_CONCLUIDA", ator(req), ipDe(req), { hashBoletim: boletim.hash, hashFinalLedger: boletim.hashFinalLedger });
+    limparCacheDashboard();
     res.json({ boletim });
   } catch (err) {
     await registrarEvento("APURACAO_RECUSADA", ator(req), ipDe(req), { motivo: (err as Error).message });
@@ -51,6 +55,7 @@ rotasAdmin.post("/nos/:nome/reparar", async (req, res) => {
   const e = await eleicaoAtual();
   const r = await repararNo(nome, e._id);
   await registrarEvento("NO_REPARADO", ator(req), ipDe(req), { no: nome, ...r });
+  limparCacheDashboard();
   res.json(r);
 });
 
@@ -73,6 +78,10 @@ rotasAuditoria.post("/amostragem", async (req, res) => {
   const r = await amostragem(e._id, tamanho);
   await registrarEvento("AMOSTRAGEM", ator(req), ipDe(req), { amostra: r.amostra, conferidos: r.conferidos });
   res.json(r);
+});
+
+rotasAuditoria.get("/dashboard", async (_req, res) => {
+  res.json(await montarDashboard());
 });
 
 rotasAuditoria.get("/eventos", async (_req, res) => {
